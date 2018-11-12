@@ -1,57 +1,81 @@
 defmodule ZmqEx do
+  use GenServer
+
   @moduledoc """
   Documentation for ZmqEx.
   """
+
+  @socket_opts [:binary, active: false]
 
   def version do
     {:ok, vsn} = :application.get_key(:zmq_ex, :vsn)
     List.to_string(vsn)
   end
 
-  @doc """
-  """
-
   require Logger
 
-  def start_server do
-    opts = [:binary, active: false]
+  @doc """
+  Start server or client
+  """
+  @spec start(type :: :server | :client, port :: integer) :: pid
+  def start(type, port) do
+    Logger.debug(fn -> "Starting #{type} on port:#{port}" end)
 
-    {:ok, listen_socket} = :gen_tcp.listen(5555, opts)
+    {:ok, socket} =
+      case type do
+        :server -> start_server(port)
+        :client -> start_client(port)
+        _ -> {:error, :wrong_type}
+      end
+
+    Logger.debug(fn -> "Created socket on port:#{port}" end)
+    {:ok, pid} = ZmqEx.start_link(socket)
+    Logger.debug(fn -> "Created genserver for socket" end)
+    start_connection(socket)
+    Logger.debug(fn -> "Started connection on port:#{port}" end)
+    spawn(fn -> rec_loop(socket, pid) end)
+
+    send_loop(socket, pid)
+    pid
+  end
+
+  def start_link(socket) do
+    GenServer.start_link(__MODULE__, socket)
+  end
+
+  @impl true
+  def init(socket) do
+    {:ok,
+     %{
+       socket: socket
+     }}
+  end
+
+  defp start_server(port) do
+    {:ok, listen_socket} = :gen_tcp.listen(port, @socket_opts)
     {:ok, socket} = :gen_tcp.accept(listen_socket)
-
     :gen_tcp.send(socket, "connected!")
-
-    start_connection(socket)
-    spawn(fn -> rec_loop(socket) end)
-
-    send_loop(socket)
   end
 
-  def start_client do
-    opts = [:binary, active: false]
-    {:ok, socket} = :gen_tcp.connect('localhost', 5555, opts)
-
+  defp start_client(port) do
+    {:ok, socket} = :gen_tcp.connect('localhost', port, @socket_opts)
     :gen_tcp.send(socket, "connected!")
-
-    start_connection(socket)
-    spawn(fn -> rec_loop(socket) end)
-
-    send_loop(socket)
+    socket
   end
 
-  defp send_loop(socket) do
+  defp send_loop(socket, pid) do
     reply = IO.gets("Please enter something: ")
     enc_reply = encode(reply)
     :gen_tcp.send(socket, enc_reply)
-    send_loop(socket)
+    send_loop(socket, pid)
   end
 
-  defp rec_loop(socket) do
+  defp rec_loop(socket, pid) do
     {:ok, msg} = :gen_tcp.recv(socket, 0)
     Logger.debug(fn -> "Raw message: #{inspect(msg)}" end)
     dmsg = decode(msg)
     Logger.debug(fn -> "Decoded message: #{inspect(dmsg)}" end)
-    rec_loop(socket)
+    rec_loop(socket, pid)
   end
 
   defp start_connection(socket) do
