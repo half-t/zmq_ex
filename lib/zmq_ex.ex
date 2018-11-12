@@ -5,7 +5,7 @@ defmodule ZmqEx do
   Documentation for ZmqEx.
   """
 
-  @socket_opts [:binary, active: false]
+  @socket_opts [:binary, active: true]
 
   def version do
     {:ok, vsn} = :application.get_key(:zmq_ex, :vsn)
@@ -19,10 +19,16 @@ defmodule ZmqEx do
   Returns pid of socket process.
 
   """
-  @spec start(type :: :server | :client, port :: integer) :: pid
-  def start(type, port) do
+  @spec start_link(type :: :server | :client, port :: integer) :: pid
+  def start_link(type, port) do
     Logger.debug(fn -> "Starting #{type} on port:#{port}" end)
+    {:ok, pid} = GenServer.start_link(__MODULE__, [type, port])
 
+    {:ok, pid}
+  end
+
+  @impl true
+  def init([type, port]) do
     {:ok, socket} =
       case type do
         :server -> start_server(port)
@@ -31,26 +37,32 @@ defmodule ZmqEx do
       end
 
     Logger.debug(fn -> "Created socket on port:#{port}" end)
-    {:ok, pid} = ZmqEx.start_link(socket)
-    Logger.debug(fn -> "Created genserver for socket" end)
-    start_connection(socket)
-    Logger.debug(fn -> "Started connection on port:#{port}" end)
-    spawn(fn -> rec_loop(socket, pid) end)
+    send(self(), :setup_connection)
 
-    send_loop(socket, pid)
-    pid
-  end
-
-  def start_link(socket) do
-    GenServer.start_link(__MODULE__, socket)
+    {:ok,
+     %{
+       connected: false,
+       type: type,
+       port: port,
+       socket: socket
+     }}
   end
 
   @impl true
-  def init(socket) do
-    {:ok,
-     %{
-       socket: socket
-     }}
+  def handle_info(:setup_connection, state = %{port: port}) do
+    Logger.debug(fn -> "Starting connection on port:#{port}" end)
+    # start_connection(socket)
+    # spawn(fn -> rec_loop(socket, self()) end)
+
+    # send_loop(socket, self())
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:tcp, socket, data}, state) do
+    Logger.debug(data)
+    :gen_tcp.send(socket, data)
+    {:noreply, state}
   end
 
   defp start_server(port) do
@@ -83,14 +95,20 @@ defmodule ZmqEx do
 
   defp start_connection(socket) do
     {:ok, msg1} = :gen_tcp.recv(socket, 0)
+    Logger.debug("sending first message")
     :gen_tcp.send(socket, msg1)
+    IO.inspect(socket)
+
     {:ok, msg2} = :gen_tcp.recv(socket, 0)
+    Logger.debug("sending second message")
     :gen_tcp.send(socket, msg2)
     {:ok, msg3} = :gen_tcp.recv(socket, 0)
+    Logger.debug("sending third message")
     :gen_tcp.send(socket, msg3)
 
     ready(socket)
     check_ready(socket)
+    :inet.setopts(socket, active: :once)
   end
 
   defp ready(socket),
