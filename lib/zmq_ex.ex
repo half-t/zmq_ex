@@ -15,7 +15,9 @@ defmodule ZmqEx do
   require Logger
 
   @doc """
-  Start server or client
+  Start server or client on given port.
+  Returns pid of socket process.
+
   """
   @spec start(type :: :server | :client, port :: integer) :: pid
   def start(type, port) do
@@ -55,12 +57,13 @@ defmodule ZmqEx do
     {:ok, listen_socket} = :gen_tcp.listen(port, @socket_opts)
     {:ok, socket} = :gen_tcp.accept(listen_socket)
     :gen_tcp.send(socket, "connected!")
+    {:ok, socket}
   end
 
   defp start_client(port) do
     {:ok, socket} = :gen_tcp.connect('localhost', port, @socket_opts)
     :gen_tcp.send(socket, "connected!")
-    socket
+    {:ok, socket}
   end
 
   defp send_loop(socket, pid) do
