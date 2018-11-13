@@ -5,7 +5,7 @@ defmodule ZmqEx do
   Documentation for ZmqEx.
   """
 
-  @socket_opts [:binary, active: :once]
+  @socket_opts [:binary, active: true]
 
   def version do
     {:ok, vsn} = :application.get_key(:zmq_ex, :vsn)
