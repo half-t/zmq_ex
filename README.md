@@ -2,7 +2,11 @@
 [![CircleCI](https://circleci.com/gh/half-t/zmq_ex.svg?style=svg)](https://circleci.com/gh/half-t/zmq_ex)
 [![Coverage Status](https://coveralls.io/repos/github/half-t/zmq_ex/badge.svg?branch=master)](https://coveralls.io/github/half-t/zmq_ex?branch=master)
 
-**TODO: Add description**
+## About
+ZmqEx - 100% native Elixir implementation of ZMTP protocol
+
+## Note
+Note that at this stage it's a *learning field* aiming to deliver production ready library in the future
 
 ## Installation
 
