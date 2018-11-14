@@ -66,15 +66,11 @@ defmodule ZmqEx do
 
   defp start_server(port) do
     {:ok, listen_socket} = :gen_tcp.listen(port, @socket_opts)
-    {:ok, socket} = :gen_tcp.accept(listen_socket)
-    :gen_tcp.send(socket, "connected!")
-    {:ok, socket}
+    :gen_tcp.accept(listen_socket)
   end
 
   defp start_client(port) do
-    {:ok, socket} = :gen_tcp.connect('localhost', port, @socket_opts)
-    :gen_tcp.send(socket, "connected!")
-    {:ok, socket}
+    :gen_tcp.connect('localhost', port, @socket_opts)
   end
 
   defp send_loop(socket) do
