@@ -29,23 +29,43 @@ defmodule ZmqEx do
 
   @impl true
   def init([type, port]) do
-    {:ok, socket} =
-      case type do
-        :server -> start_server(port)
-        :client -> start_client(port)
-        _ -> {:error, :wrong_type}
-      end
+    case type do
+      :server -> send(self(), :start_server)
+      :client -> send(self(), :start_client)
+      _ -> {:error, :wrong_type}
+    end
 
     Logger.debug(fn -> "Created socket on port:#{port}" end)
-    send(self(), :setup_connection)
 
     {:ok,
      %{
        connected: false,
        type: type,
-       port: port,
-       socket: socket
+       port: port
      }}
+  end
+
+  @impl true
+  def handle_info(:start_server, state = %{port: port}) do
+    Logger.debug(fn -> "Starting server on port:#{port}" end)
+
+    with {:ok, listen_socket} <- :gen_tcp.listen(port, @socket_opts),
+         {:ok, socket} <- :gen_tcp.accept(listen_socket) do
+      Logger.debug(fn -> "Server started, starting connection..." end)
+      start_connection_server(socket)
+      send_loop(socket)
+      {:noreply, Map.put(state, :socket, socket)}
+    end
+  end
+
+  @impl true
+  def handle_info(:start_client, state = %{port: port}) do
+    Logger.debug(fn -> "Starting client on port:#{port}" end)
+    {:ok, socket} = start_client(port)
+    Logger.debug(fn -> "Client started, starting connection..." end)
+    start_connection(socket)
+    send_loop(socket)
+    {:noreply, Map.put(state, :socket, socket)}
   end
 
   @impl true
@@ -64,11 +84,6 @@ defmodule ZmqEx do
     {:noreply, state}
   end
 
-  defp start_server(port) do
-    {:ok, listen_socket} = :gen_tcp.listen(port, @socket_opts)
-    :gen_tcp.accept(listen_socket)
-  end
-
   defp start_client(port) do
     :gen_tcp.connect('localhost', port, @socket_opts)
   end
@@ -80,8 +95,23 @@ defmodule ZmqEx do
     send_loop(socket)
   end
 
+  defp start_connection_server(socket) do
+    # to handle compatibility with old version, should be rewritten
+    # msg will be used when we will handle the handshake
+    :inet.setopts(socket, active: false)
+    :gen_tcp.send(socket, partial_server_greeting())
+    {:ok, _msg1} = :gen_tcp.recv(socket, 0)
+    :gen_tcp.send(socket, server_version())
+    {:ok, _msg2} = :gen_tcp.recv(socket, 0)
+    :gen_tcp.send(socket, server_greeting_rest())
+    {:ok, _msg3} = :gen_tcp.recv(socket, 0)
+
+    ready(socket)
+    check_ready(socket)
+  end
+
   defp start_connection(socket) do
-    # to handle compatibility with old version, should be rwritten
+    # to handle compatibility with old version, should be rewritten
     :inet.setopts(socket, active: false)
     {:ok, msg1} = :gen_tcp.recv(socket, 0)
     :gen_tcp.send(socket, msg1)
@@ -126,4 +156,8 @@ defmodule ZmqEx do
        do: {s, comm, comm_2, comm_3, comm_4, body}
 
   defp decode(<<0, msg_size, msg::binary-size(msg_size)>>), do: msg
+
+  defp partial_server_greeting, do: <<255, 0, 0, 0, 0, 0, 0, 0, 1, 127>>
+  defp server_version, do: <<3>>
+  defp server_greeting_rest, do: <<0, 78, 85, 76, 76, 0::size(424)>>
 end
