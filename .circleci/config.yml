@@ -31,7 +31,7 @@ jobs:
 
       - restore_cache:
           keys:
-            - zmq_ex-plt-{{ checksum "mix.lock" }}-{{ checksum "mix.exs" }}
+            - zmq_ex-plt-{{ .BuildNum }}
             - zmq_ex-plt-
       - run: mix dialyzer
 
@@ -46,7 +46,7 @@ jobs:
           paths:
             - deps/
       - save_cache:
-          key: zmq_ex-plt-{{ checksum "mix.lock" }}-{{ checksum "mix.exs" }}
+          key: zmq_ex-plt-{{ .BuildNum }}
           paths:
             - _build/test/dialyxir_erlang-21.1.1_elixir-1.7.4_deps-test.plt
 
