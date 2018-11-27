@@ -40,9 +40,19 @@ jobs:
           keys:
             - zmq_ex-plt-{{ .BuildNum }}
             - zmq_ex-plt-
+      - run:
+          name: restore plts
+          command: |
+            mkdir -p ./plt
+            touch ./plt/files
+            mv ./plt/* _build/test/
       - run: mix dialyzer
+      - run:
+          name: save plts
+          command: |
+            cp _build/test/*.plt ./plt
       - save_cache:
           key: zmq_ex-plt-{{ .BuildNum }}
           paths:
-            - _build/test/dialyxir_erlang-21.1.1_elixir-1.7.4_deps-test.plt
+            - ./plt/
 
