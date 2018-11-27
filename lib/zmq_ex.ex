@@ -37,7 +37,6 @@ defmodule ZmqEx do
 
     {:ok,
      %{
-       connected: false,
        type: type,
        port: port
      }}
