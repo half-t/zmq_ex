@@ -20,10 +20,9 @@ defmodule ZmqEx do
 
   """
   @spec start_link(type :: :server | :client, port :: integer) :: {:ok, pid}
-  def start_link(type, port) do
+  def start_link(type, port) when type in [:server, :client] do
     Logger.debug(fn -> "Starting #{type} on port:#{port}" end)
     {:ok, pid} = GenServer.start_link(__MODULE__, [type, port])
-
     {:ok, pid}
   end
 
@@ -32,7 +31,6 @@ defmodule ZmqEx do
     case type do
       :server -> send(self(), :start_server)
       :client -> send(self(), :start_client)
-      _ -> {:error, :wrong_type}
     end
 
     Logger.debug(fn -> "Created socket on port:#{port}" end)
