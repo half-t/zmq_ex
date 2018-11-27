@@ -18,35 +18,41 @@ jobs:
           keys:
             - zmq_ex-deps-{{ checksum "mix.lock" }}
       - run: mix deps.get
+      - save_cache:
+          key: zmq_ex-deps-{{ checksum "mix.lock" }}
+          paths:
+            - deps/
 
       - run: mix format --check-formatted
       - run: mix compile
       - run: mix credo --strict
-
       - run:
           name: mix test (coveralls.circle)
           command: |
             mkdir -p ./test-results/mix
             mix coveralls.circle
-
-      - restore_cache:
-          keys:
-            - zmq_ex-plt-{{ checksum "mix.lock" }}-{{ checksum "mix.exs" }}
-            - zmq_ex-plt-
-      - run: mix dialyzer
-
       - store_test_results:
           path: test-results
-
       - store_artifacts:
           path: test-results
 
+      - restore_cache:
+          keys:
+            - zmq_ex-plt-
+      - run:
+          name: restore plts
+          command: |
+            mkdir -p ./plt
+            touch ./plt/files
+            mv ./plt/* _build/test/
+      - run: mix dialyzer
+      - run:
+          name: save plts
+          command: |
+            cp _build/test/*.plt ./plt
+            ls ./plt/ > ./plt/files
       - save_cache:
-          key: zmq_ex-deps-{{ checksum "mix.lock" }}
+          key: zmq_ex-plt-{{ checksum "./plt/files" }}
           paths:
-            - deps/
-      - save_cache:
-          key: zmq_ex-plt-{{ checksum "mix.lock" }}-{{ checksum "mix.exs" }}
-          paths:
-            - _build/test/dialyxir_erlang-21.1.1_elixir-1.7.4_deps-test.plt
+            - ./plt/
 
