@@ -21,56 +21,38 @@ defmodule ZmqEx do
   """
   @spec start_link(type :: :server | :client, port :: integer) :: {:ok, pid}
   def start_link(type, port) when type in [:server, :client] do
-    Logger.debug(fn -> "Starting #{type} on port:#{port}" end)
-    {:ok, pid} = GenServer.start_link(__MODULE__, [type, port])
-    {:ok, pid}
+    GenServer.start_link(__MODULE__, [type, port])
   end
 
   @impl true
   def init([type, port]) do
-    case type do
-      :server -> send(self(), :start_server)
-      :client -> send(self(), :start_client)
-    end
-
-    Logger.debug(fn -> "Created socket on port:#{port}" end)
-
-    {:ok,
-     %{
-       type: type,
-       port: port
-     }}
+    send(self(), :init)
+    {:ok, %{type: type, port: port}}
   end
 
   @impl true
-  def handle_info(:start_server, state = %{port: port}) do
+  def handle_info(:init, state = %{type: :server, port: port}) do
     Logger.debug(fn -> "Starting server on port:#{port}" end)
 
     with {:ok, listen_socket} <- :gen_tcp.listen(port, @socket_opts),
          {:ok, socket} <- :gen_tcp.accept(listen_socket) do
       Logger.debug(fn -> "Server started, starting connection..." end)
       start_connection_server(socket)
+      Logger.debug(fn -> "Server OK" end)
       send_loop(socket)
       {:noreply, Map.put(state, :socket, socket)}
     end
   end
 
   @impl true
-  def handle_info(:start_client, state = %{port: port}) do
+  def handle_info(:init, state = %{type: :client, port: port}) do
     Logger.debug(fn -> "Starting client on port:#{port}" end)
     {:ok, socket} = start_client(port)
     Logger.debug(fn -> "Client started, starting connection..." end)
     start_connection(socket)
+    Logger.debug(fn -> "Client OK" end)
     send_loop(socket)
     {:noreply, Map.put(state, :socket, socket)}
-  end
-
-  @impl true
-  def handle_info(:setup_connection, state = %{port: port, socket: socket}) do
-    Logger.debug(fn -> "Starting connection on port:#{port}" end)
-    start_connection(socket)
-    send_loop(socket)
-    {:noreply, state}
   end
 
   @impl true
@@ -104,7 +86,8 @@ defmodule ZmqEx do
     {:ok, _msg3} = :gen_tcp.recv(socket, 0)
 
     ready(socket)
-    check_ready(socket)
+    # check_ready is blocking on first client's `Please enter something` FIXME
+    # check_ready(socket)
   end
 
   defp start_connection(socket) do
