@@ -38,7 +38,6 @@ jobs:
 
       - restore_cache:
           keys:
-            - zmq_ex-plt-{{ .BuildNum }}
             - zmq_ex-plt-
       - run:
           name: restore plts
@@ -51,8 +50,9 @@ jobs:
           name: save plts
           command: |
             cp _build/test/*.plt ./plt
+            ls ./plt/ > ./plt/files
       - save_cache:
-          key: zmq_ex-plt-{{ .BuildNum }}
+          key: zmq_ex-plt-{{ checksum "./plt/files" }}
           paths:
             - ./plt/
 
