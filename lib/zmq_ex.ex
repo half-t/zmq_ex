@@ -1,42 +1,70 @@
 defmodule ZmqEx do
+  use GenServer
+
   @moduledoc """
   Documentation for ZmqEx.
   """
+
+  @socket_opts [:binary, active: true]
 
   def version do
     {:ok, vsn} = :application.get_key(:zmq_ex, :vsn)
     List.to_string(vsn)
   end
 
-  @doc """
-  """
-
   require Logger
 
-  def start_server do
-    opts = [:binary, active: false]
+  @doc """
+  Start server or client on given port.
+  Returns pid of socket process.
 
-    {:ok, listen_socket} = :gen_tcp.listen(5555, opts)
-    {:ok, socket} = :gen_tcp.accept(listen_socket)
-
-    :gen_tcp.send(socket, "connected!")
-
-    start_connection(socket)
-    spawn(fn -> rec_loop(socket) end)
-
-    send_loop(socket)
+  """
+  @spec start_link(type :: :server | :client, port :: integer) :: {:ok, pid}
+  def start_link(type, port) when type in [:server, :client] do
+    GenServer.start_link(__MODULE__, [type, port])
   end
 
-  def start_client do
-    opts = [:binary, active: false]
-    {:ok, socket} = :gen_tcp.connect('localhost', 5555, opts)
+  @impl true
+  def init([type, port]) do
+    send(self(), :init)
+    {:ok, %{type: type, port: port}}
+  end
 
-    :gen_tcp.send(socket, "connected!")
+  @impl true
+  def handle_info(:init, state = %{type: :server, port: port}) do
+    Logger.debug(fn -> "Starting server on port:#{port}" end)
 
+    with {:ok, listen_socket} <- :gen_tcp.listen(port, @socket_opts),
+         {:ok, socket} <- :gen_tcp.accept(listen_socket) do
+      Logger.debug(fn -> "Server started, starting connection..." end)
+      start_connection_server(socket)
+      Logger.debug(fn -> "Server OK" end)
+      send_loop(socket)
+      {:noreply, Map.put(state, :socket, socket)}
+    end
+  end
+
+  @impl true
+  def handle_info(:init, state = %{type: :client, port: port}) do
+    Logger.debug(fn -> "Starting client on port:#{port}" end)
+    {:ok, socket} = start_client(port)
+    Logger.debug(fn -> "Client started, starting connection..." end)
     start_connection(socket)
-    spawn(fn -> rec_loop(socket) end)
-
+    Logger.debug(fn -> "Client OK" end)
     send_loop(socket)
+    {:noreply, Map.put(state, :socket, socket)}
+  end
+
+  @impl true
+  def handle_info({:tcp, _socket, data}, state) do
+    Logger.debug(fn -> "Raw message: #{inspect(data)}" end)
+    dmsg = decode(data)
+    Logger.debug(fn -> "Decoded message: #{inspect(dmsg)}" end)
+    {:noreply, state}
+  end
+
+  defp start_client(port) do
+    :gen_tcp.connect('localhost', port, @socket_opts)
   end
 
   defp send_loop(socket) do
@@ -46,15 +74,25 @@ defmodule ZmqEx do
     send_loop(socket)
   end
 
-  defp rec_loop(socket) do
-    {:ok, msg} = :gen_tcp.recv(socket, 0)
-    Logger.debug(fn -> "Raw message: #{inspect(msg)}" end)
-    dmsg = decode(msg)
-    Logger.debug(fn -> "Decoded message: #{inspect(dmsg)}" end)
-    rec_loop(socket)
+  defp start_connection_server(socket) do
+    # to handle compatibility with old version, should be rewritten
+    # msg will be used when we will handle the handshake
+    :inet.setopts(socket, active: false)
+    :gen_tcp.send(socket, partial_server_greeting())
+    {:ok, _msg1} = :gen_tcp.recv(socket, 0)
+    :gen_tcp.send(socket, server_version())
+    {:ok, _msg2} = :gen_tcp.recv(socket, 0)
+    :gen_tcp.send(socket, server_greeting_rest())
+    {:ok, _msg3} = :gen_tcp.recv(socket, 0)
+
+    ready(socket)
+    # check_ready is blocking on first client's `Please enter something` FIXME
+    # check_ready(socket)
   end
 
   defp start_connection(socket) do
+    # to handle compatibility with old version, should be rewritten
+    :inet.setopts(socket, active: false)
     {:ok, msg1} = :gen_tcp.recv(socket, 0)
     :gen_tcp.send(socket, msg1)
     {:ok, msg2} = :gen_tcp.recv(socket, 0)
@@ -64,6 +102,8 @@ defmodule ZmqEx do
 
     ready(socket)
     check_ready(socket)
+    Logger.debug(fn -> "Send welcome messages" end)
+    :inet.setopts(socket, active: true)
   end
 
   defp ready(socket),
@@ -96,4 +136,8 @@ defmodule ZmqEx do
        do: {s, comm, comm_2, comm_3, comm_4, body}
 
   defp decode(<<0, msg_size, msg::binary-size(msg_size)>>), do: msg
+
+  defp partial_server_greeting, do: <<255, 0, 0, 0, 0, 0, 0, 0, 1, 127>>
+  defp server_version, do: <<3>>
+  defp server_greeting_rest, do: <<0, 78, 85, 76, 76, 0::size(424)>>
 end
